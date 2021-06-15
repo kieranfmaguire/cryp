@@ -5,6 +5,9 @@
 import ccxt
 import pandas as pd
 import numpy as np
+import mysql.connector
+
+# region testing connectiont to binance public API
 
 # see what exchanges we can connect to
 print(f"Available exchanges:")
@@ -60,7 +63,6 @@ print(orderbook.keys())
 
 # here is a code snippet to fetch one days worth of trades pulled from the manual: https://github.com/ccxt/ccxt/wiki/Manual#overview
 # it doesn't work because of the await call - need to figure out why
-
 # Python
 if binance.has['fetchOrders']:
     since = binance.milliseconds() - 86400000  # -1 day from now
@@ -77,6 +79,49 @@ if binance.has['fetchOrders']:
         else:
             break
 
+# endregion
+
+# region testing connection to mysql database
+
+# following tutorial from: https://www.freecodecamp.org/news/connect-python-with-sql/
+
+def create_db_connection(db_name, host_name, user_name, user_password):
+    connection = None
+    try:
+        connection = mysql.connector.connect(
+            host=host_name,
+            user=user_name,
+            passwd=user_password,
+            database=db_name
+        )
+        print("MySQL Database connection successful")
+    except BaseException as err:
+        print(f"Error: '{err}'")
+
+    return connection
+
+def query(connection, query):
+    cursor = connection.cursor(buffered=True)
+    try:
+        cursor.execute(query)
+    except BaseException as err:
+        print(f"Error: {err}")
+    return cursor
+connection = create_db_connection('crypto','localhost','researcher','researcher')
+
+query(connection, 'SHOW TABLES;')
+
+create_test_table = """
+CREATE TABLE test_table (
+id_key INT PRIMARY KEY,
+age INT
+);
+"""
+
+query(connection, create_test_table)
+cursor = query(connection, "SHOW TABLES;") # the cursor is an iterable with the results I think
+print(cursor)
+# endregion
 
 
 

@@ -29,5 +29,6 @@ dependencies:
   - zlib=1.2.11=h516909a_1010
   - pip:
       - ccxt
+      - mysql-connector-python==8.0.25
 
 
