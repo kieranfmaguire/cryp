@@ -57,7 +57,7 @@ binance.fetch_trades('BTC/USDT', since=binance.milliseconds() - 2000)
 
 # can look at snapshot of the order book
 # for some reason the timestamp and datetime is coming back empty though ...
-orderbook = binance.fetchL2OrderBook('BTC/USDT')
+orderbook = binance.fetch_order_book('BTC/USDT')
 print(orderbook)
 print(orderbook.keys())
 
