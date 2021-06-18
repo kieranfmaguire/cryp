@@ -87,18 +87,18 @@ class DataCollector(object):
 
         ask_prices, bid_prices = [x[0] for x in order_book['asks']], [x[0] for x in order_book['bids']]
         ask_quantities, bid_quantities = [x[1] for x in order_book['asks']], [x[1] for x in order_book['bids']]
-        partial_order_book = pd.DataFrame(columns=self.order_book.reset_index().columns)
+        snapshot_order_book = pd.DataFrame(columns=self.order_book.reset_index().columns)
 
-        partial_order_book['price'] = ask_prices + bid_prices
-        partial_order_book['quantity'] = ask_quantities + bid_quantities
-        partial_order_book['type'] = ['ask'] * len(ask_prices) + ['bid'] * len(bid_prices)
-        partial_order_book['symbol'] = order_book['symbol']
-        partial_order_book['received_dt'] = order_book['receive_time']
-        partial_order_book['request_dt'] = order_book['request_time']
-        partial_order_book['exchange'] = self.exchange
-        partial_order_book.set_index(self.order_book.index.names, inplace=True, append=False)
+        snapshot_order_book['price'] = ask_prices + bid_prices
+        snapshot_order_book['quantity'] = ask_quantities + bid_quantities
+        snapshot_order_book['type'] = ['ask'] * len(ask_prices) + ['bid'] * len(bid_prices)
+        snapshot_order_book['symbol'] = order_book['symbol']
+        snapshot_order_book['received_dt'] = order_book['receive_time']
+        snapshot_order_book['request_dt'] = order_book['request_time']
+        snapshot_order_book['exchange'] = self.exchange
+        snapshot_order_book.set_index(self.order_book.index.names, inplace=True, append=False)
 
-        return partial_order_book
+        return snapshot_order_book
 
     def reset_order_book(self):
         """
