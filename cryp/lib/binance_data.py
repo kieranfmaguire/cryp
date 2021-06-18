@@ -4,70 +4,101 @@ Class to request and parse market data from Binance exchance, using ccxt package
 
 import ccxt
 import pandas as pd
+import time
 import datetime
 import pytz
 
-class BinanceDataCollector(ccxt.binance):
 
-    def __init__(self, enable_rate_limit=True):
+class DataCollector(object):
+
+    def __init__(self, exchange='binance', enable_rate_limit=True): #
         """
-        Subclass the ccxt.binance API to collect and parse some data
-        :param enable_rate_limit: Should the rate limiter be enabled. Default is true. If not, risk getting banned.
+        Subclass the ccxt API to collect and parse some data
+        :param exchange: str. Which exchange to connect to. Should be one of ccxt.exchanges
+        :param enable_rate_limit: bool. Should the rate limiter be enabled. Default is true. If not, risk getting banned.
         :return: None
         """
-
-        super().__init__()
-
+        self.exchange = getattr(ccxt, exchange)()
+        self.exchange.load_markets()
         self.TIMEZONE = pytz.UTC
         self.DEFAULT_SYMBOL = 'LTC/USDT'
         self.BUFFER_SIZE_ROWS = 10000
 
-        self.enableRateLimit = enable_rate_limit
+        self.exchange.enableRateLimit = enable_rate_limit
         self.order_book = None
+
+    def watch_order_book(self, symbol=None, max_iter=None, **kwargs):
+        """
+        Request order book data at regular intervals (determined by exchange API rate limit), parse and yield
+        :param symbol: str
+        :param max_iter: int or None. If int, break loop after this many iters.
+        :param kwargs: extra key=value args to be passed to the fetch order book call
+        :return: generator. Each item is pd.DataFrame
+        """
+
+        if symbol is None:
+            symbol = self.DEFAULT_SYMBOL
+        if symbol not in self.exchange.symbols:
+            print(f"Symbol is not available at this exchange!")
+            return
+
+        interval_milliseconds = self.exchange.rateLimit
+        interval_seconds = interval_milliseconds * 1e-3
+
+        i = 0
+        while True:
+            i += 1
+            if i is None:
+                pass
+            else:
+                if i > max_iter:
+                    break
+            time.sleep(interval_seconds)
+            yield self.get_order_book_with_time(symbol, **kwargs)
 
     def get_order_book_with_time(self, symbol=None, **kwargs):
         """
-        Get orderbook snapshot for list of tickers from the REST API. Add timestamps (in UTC)
-        :param symbols:
-        :return: dict
+        Get order book snapshot for list of tickers from the REST API. Add timestamps (in UTC), parse and return
+        :param symbol: str
+        :return: pd.DataFrame
         """
         if symbol is None:
             symbol = self.DEFAULT_SYMBOL
+        if symbol not in self.exchange.symbols:
+            print(f"Symbol is not available at this exchange!")
+            return
         request_time = datetime.datetime.now(self.TIMEZONE)
-        order_book = self.fetch_l2_order_book(symbol=symbol, **kwargs)
+        order_book = self.exchange.fetch_l2_order_book(symbol=symbol, **kwargs)
         recv_time = datetime.datetime.now(self.TIMEZONE)
         order_book['request_time'] = request_time
         order_book['receive_time'] = recv_time
-        return order_book
+        return self.parse_order_book(order_book)
 
-    def handle_order_book(self, order_book):
+    def parse_order_book(self, order_book):
         """
-        When a new order book snapshot is fetched, store in frame until enough rows have been collected,
-        then push data out
-        :param order_book:
-        :return:
+        When a new order book snapshot is fetched, shape into dataframe and add metadata
+
+        :param order_book: Dict. the order book returned by `self.get_order_book_with_time()`
+        :return: pd.DataFrame. formatted version of input order book
         """
 
         if self.order_book is None:
             self.reset_order_book()
 
-        ask_prices, bid_prices = [x[0] for x in order_book['asks']], [x[1] for x in order_book['bids']]
-        ask_quantities, bid_quantities = [x[0] for x in order_book['bids']], [x[1] for x in order_book['bids']]
-        partial_df = pd.DataFrame(columns=self.order_book.reset_index().columns)
+        ask_prices, bid_prices = [x[0] for x in order_book['asks']], [x[0] for x in order_book['bids']]
+        ask_quantities, bid_quantities = [x[1] for x in order_book['asks']], [x[1] for x in order_book['bids']]
+        partial_order_book = pd.DataFrame(columns=self.order_book.reset_index().columns)
 
-        partial_df['price'] = ask_prices + bid_prices
-        partial_df['quantity'] = ask_quantities + bid_quantities
-        partial_df['type'] = ['ask'] * len(ask_prices) + ['bid'] * len(bid_prices)
-        partial_df['symbol'] = order_book['symbol']
-        partial_df['received_dt'] = order_book['received_dt']
-        partial_df['request_dt'] = order_book['request_dt']
-        partial_df.set_index(self.order_book.index.names, inplace=True, append=False)
+        partial_order_book['price'] = ask_prices + bid_prices
+        partial_order_book['quantity'] = ask_quantities + bid_quantities
+        partial_order_book['type'] = ['ask'] * len(ask_prices) + ['bid'] * len(bid_prices)
+        partial_order_book['symbol'] = order_book['symbol']
+        partial_order_book['received_dt'] = order_book['receive_time']
+        partial_order_book['request_dt'] = order_book['request_time']
+        partial_order_book['exchange'] = self.exchange
+        partial_order_book.set_index(self.order_book.index.names, inplace=True, append=False)
 
-        self.order_book.append(partial_df)
-
-        if self.order_book.shape[0] >= self.BUFFER_SIZE_ROWS:
-            self.write_to_db()
-            self.reset_order_book()
+        return partial_order_book
 
     def reset_order_book(self):
         """
@@ -75,8 +106,14 @@ class BinanceDataCollector(ccxt.binance):
         :return: None
         """
 
-        self.order_book = pd.DataFrame(columns=['symbol', 'request_dt', 'received_dt', 'type', 'price', 'quantity'])\
-            .set_index(['symbol', 'request_dt', 'received_dt', 'type'], append=False)
+        self.order_book = pd.DataFrame(columns=['exchange', 'symbol', 'request_dt', 'received_dt', 'type', 'price', 'quantity'])\
+            .set_index(['exchange', 'symbol', 'request_dt', 'received_dt', 'type'], append=False)
+
+    def buffer_order_book(self):
+        """
+
+        :return:
+        """
 
     def write_to_db(self):
         """
